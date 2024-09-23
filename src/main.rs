@@ -1,15 +1,18 @@
+mod entity;
+mod method;
+mod io;
+mod handle;
+
 use tokio::net::{TcpListener, TcpStream};
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind, Read};
 use std::panic;
 use std::sync::{Arc};
 use bytes::BytesMut;
-use serde::{Deserialize, Serialize};
+use rmp_serde::to_vec_named;
 use tokio::io::{AsyncReadExt, BufWriter};
 use tokio::sync::Mutex;
 
-#[path = "./lib.rs"]
-mod lib;
 
 #[tokio::main]
 async fn main() {
@@ -22,10 +25,11 @@ async fn main() {
         // println!("Accepted:{:p}",&db_);
         tokio::spawn(async move {
             loop {
-               match lib::process(&mut socket, &db_).await{
+               match handle::process(&mut socket, &db_).await{
                    Ok(_) => {},
                    Err(e) =>{
                        println!("{:?}", e);
+                       socket.write_all(to_vec_named(&e).unwrap().as_slice()).await.unwrap();
                        if e.code == -1 {
                            break;
                        }

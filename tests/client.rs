@@ -12,7 +12,7 @@ mod entity;
 mod method;
 
 use entity::{TSItem};
-use crate::entity::{DataType, TSCacheValue, TSValue};
+use crate::entity::*;
 use crate::method::MethodKind;
 
 #[test]
@@ -21,6 +21,7 @@ fn client_test() {
         tsName: "demo".parse().unwrap(),
         capacity: 100,
         datatype: DataType::Long,
+        saveTime: SaveTimePeriod::Nerve,
     };
     let rt = serde_json::to_string(&demo).unwrap();
     println!("{}", rt);
@@ -38,8 +39,8 @@ fn client_test02() {
     // let mut stream = TcpStream::connect("127.0.0.1:8080").unwrap();
     let value = TSValue {
         name: "demo".to_string(),
-        key: 2,
-        value: TSCacheValue::ByteArray(vec![1, 2, 3]),
+        key: 4,
+        value: TSCacheValue::String("demo".to_string()),
     };
     let rt = serde_json::to_string(&value).unwrap();
     println!("{}", rt);

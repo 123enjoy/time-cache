@@ -1,6 +1,3 @@
-mod entity;
-mod method;
-
 
 use tokio::net::TcpStream;
 
@@ -8,11 +5,13 @@ use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::sync::{Arc};
 use bytes::BytesMut;
+use rmp_serde::to_vec_named;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
-use method::{Exception};
+use crate::method::{Exception,TSQueue,choose_method};
+use crate::entity::{TSItem,TSValue,TSCacheValue,SaveTimePeriod,DataType};
 
-type Db = Arc<Mutex<HashMap<String, method::TSQueue>>>;
+type Db = Arc<Mutex<HashMap<String, TSQueue>>>;
 // type Db = HashMap<u128, Bytes>;
 
 struct TsConnection {
@@ -30,7 +29,7 @@ pub async fn process(socket: &mut TcpStream, db: &Db) -> Result<(), Exception> {
     if buff.is_empty() { return Ok(()); }
     let action = (&buff[0..2]).read_u16().await.unwrap();
     let param = &buff[6..];
-    let m = method::choose_method(action);
+    let m = choose_method(action);
     let mut map = db.lock().await;
     let mut out = BytesMut::new();
     let result = m.unwrap().do_method(&param, &mut map, &mut out);
@@ -44,6 +43,8 @@ pub async fn process(socket: &mut TcpStream, db: &Db) -> Result<(), Exception> {
                 return Err(Exception::new(-1, "Error while writing to socket".to_string().as_str()));
             }
         }
+    }else {
+        socket.write_all(to_vec_named(&TSCacheValue::String("OK".to_string())).unwrap().as_slice()).await.unwrap();
     }
     Ok(())
 }

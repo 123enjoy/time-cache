@@ -1,8 +1,6 @@
 use std::fmt::Formatter;
-use byteorder::{BigEndian, WriteBytesExt};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{Error};
-use serde_json::{Number, Value};
 
 trait TSMethod<T> {
     fn convert(self, bytes: &[u8]) -> T;
@@ -29,11 +27,35 @@ impl DataType {
         }
     }
 }
+
+
+#[derive(Clone, Debug,Eq, PartialEq, Serialize, Deserialize)]
+pub enum SaveTimePeriod {
+    Nerve,
+    Minute,
+    TenMinutes,
+    Hour,
+    Day,
+}
+
+
+impl SaveTimePeriod {
+    pub fn as_period(&self) -> u128 {
+        match self {
+            SaveTimePeriod::Nerve => 0,
+            SaveTimePeriod::Minute => 60,
+            SaveTimePeriod::TenMinutes => 60 * 10,
+            SaveTimePeriod::Hour => 3600,
+            SaveTimePeriod::Day => 3600 * 24,
+        }
+    }
+}
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TSItem {
     pub tsName: String,
     pub capacity: usize,
     pub datatype: DataType,
+    pub saveTime: SaveTimePeriod,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -43,7 +65,7 @@ pub struct TSValue {
     pub value: TSCacheValue,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum TSCacheValue {
     Float(f32),
     Long(i64),
@@ -70,14 +92,17 @@ impl<'de> serde::de::Visitor<'de> for TSCacheValueVisitor {
 
 impl<'de> Deserialize<'de> for TSCacheValue {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: Deserializer<'de> {
+    where
+        D: Deserializer<'de>,
+    {
         deserializer.deserialize_any(TSCacheValueVisitor)
     }
 }
 
 impl Serialize for TSCacheValue {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer,
+    where
+        S: Serializer,
     {
         match self {
             TSCacheValue::Float(it) => serializer.serialize_f32(*it),

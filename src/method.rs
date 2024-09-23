@@ -1,15 +1,15 @@
-use std::collections::HashMap;
-use std::fmt::format;
-use std::ops::Deref;
 use bytes::{BufMut, BytesMut};
 use lazy_static::lazy_static;
 use msgpack_simple::MsgPack;
+use std::collections::HashMap;
+use std::ops::Deref;
 use tokio::sync::MutexGuard;
-#[path = "./entity.rs"]
-mod entity;
 
-use rmp_serde::{from_slice, to_vec, to_vec_named};
-use entity::{TSItem, TSValue, TSCacheValue};
+use crate::entity::{TSCacheValue, TSItem, TSValue};
+use crate::io::FileIOCache;
+use rmp_serde::{from_slice, to_vec_named};
+use serde::{Deserialize, Serialize};
+use ExceptionKind::{TSNameExistsError, TimeSerieError};
 
 pub struct TSQueue {
     ts_item: Box<TSItem>,
@@ -31,23 +31,24 @@ impl TSQueue {
         }
     }
 
-    pub fn insert(&mut self, time: u128, value: Box<TSCacheValue>) {
+    pub fn insert(&mut self, time: u128, value: Box<TSCacheValue>) -> Result<(), Exception> {
         if self.index == self.capacity {
             self.index = 0;
         }
         if self.len == 0 && self.keys[0] >= time {
-            return;
+            return Err(Exception::err(TimeSerieError, "time must be greater than 0"));
         }
         if self.len > 0 && self.index == 0 && self.keys[self.capacity - 1] >= time {
-            return;
+            return Err(Exception::err(TimeSerieError, format!("current key:{} must be greater than last time", time).as_str()));
         }
         if self.len > 0 && self.index != 0 && self.keys[self.index - 1] >= time {
-            return;
+            return Err(Exception::err(TSNameExistsError, format!("current key:{} must be greater than last time", time).as_str()));
         }
         self.keys[self.index] = time;
         self.values[self.index] = value;
         self.index += 1;
         self.len += 1;
+        Ok(())
     }
 
     pub unsafe fn query_times(&mut self, start_time: u128, end_time: u128) -> Vec<&TSCacheValue> {
@@ -85,11 +86,11 @@ impl TSQueue {
     }
 
     pub fn query_last(&mut self) -> Option<&TSCacheValue> {
-        Some(&self.values[self.index - 1])
+        if self.len == 0 { None } else { Some(&self.values[self.index - 1]) }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Exception {
     pub code: i16,
     pub msg: String,
@@ -99,14 +100,16 @@ pub enum ExceptionKind {
     ParamParseError,
     TSNameExistsError,
     QueueIsNullError,
+    TimeSerieError,
 }
 
 impl ExceptionKind {
     fn as_code(&self) -> i16 {
         match self {
             ExceptionKind::ParamParseError => 4001,
-            ExceptionKind::TSNameExistsError => 4002,
+            TSNameExistsError => 4002,
             ExceptionKind::QueueIsNullError => 4003,
+            TimeSerieError => 4004,
         }
     }
 }
@@ -137,6 +140,8 @@ pub enum MethodKind {
     Set,
 
     Get,
+    Range,
+    Query,
 }
 
 impl MethodKind {
@@ -145,6 +150,8 @@ impl MethodKind {
             MethodKind::Create => 101,
             MethodKind::Set => 201,
             MethodKind::Get => 301,
+            MethodKind::Range => 302,
+            MethodKind::Query => 303,
         }
     }
 }
@@ -162,6 +169,11 @@ lazy_static!(
         TSMethod::new(MethodKind::Get,Box::new(GetValueAction)),
     ];
 );
+
+lazy_static!(
+    static ref FILE_CACHE:HashMap<&'static str, FileIOCache> =HashMap::new();
+);
+
 pub fn choose_method(action: u16) -> Option<&'static Box<dyn Method>> {
     let methods: &Vec<TSMethod> = &*HANDLER_METHOD;
     methods.iter().find(|&method| { method.code == action }).map(|it| { &it.method })
@@ -180,9 +192,15 @@ impl Method for CreateItemAction {
                 return Err(Exception::err(ExceptionKind::ParamParseError, format!("parse msgpack error:{}", e).as_str()));
             }
         };
-        if !db.contains_key(item.tsName.as_str()) {
+        let name = item.tsName.as_str();
+        if !db.contains_key(name) {
             let new = item.clone();
-            db.insert(item.tsName, TSQueue::new(Box::new(new), item.capacity));
+            db.insert(name.to_string(), TSQueue::new(Box::new(new), item.capacity));
+            unsafe {
+                // let mut cache = &FILE_CACHE;
+                // cache.insert(name, FileIOCache::new(Box::new(item)));
+                // let v = cache.into_values().collect();
+            }
         } else {
             return Err(Exception::err(ExceptionKind::TSNameExistsError, format!("duplicate TSName {}", item.tsName).as_str()));
         }
@@ -204,8 +222,7 @@ impl Method for SetValueAction {
             return Err(Exception::err(ExceptionKind::TSNameExistsError, format!("TSName {} not exist", value.name).as_str()));
         }
         let queue = db.get_mut(value.name.as_str()).unwrap();
-        queue.insert(value.key, Box::new(value.value));
-        Ok(())
+        queue.insert(value.key, Box::new(value.value))
     }
 }
 
