@@ -1,6 +1,8 @@
 use std::fs::File;
+use std::hash::RandomState;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::time::SystemTime;
 use byteorder::{BigEndian, WriteBytesExt};
 use msgpack_simple::MsgPack;
 use rmp_serde::to_vec_named;
@@ -10,6 +12,14 @@ use rmp_serde::{from_slice};
 mod entity;
 #[path = "../src/method.rs"]
 mod method;
+
+#[path = "../src/io.rs"]
+mod io;
+
+#[path = "../src/db.rs"]
+mod db;
+
+
 
 use entity::{TSItem};
 use crate::entity::*;
@@ -21,7 +31,7 @@ fn client_test() {
         tsName: "demo".parse().unwrap(),
         capacity: 100,
         datatype: DataType::Long,
-        saveTime: SaveTimePeriod::Nerve,
+        saveTime: SaveTimePeriod::Minute,
     };
     let rt = serde_json::to_string(&demo).unwrap();
     println!("{}", rt);
@@ -36,11 +46,12 @@ fn client_test() {
 
 #[test]
 fn client_test02() {
+    let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
     // let mut stream = TcpStream::connect("127.0.0.1:8080").unwrap();
     let value = TSValue {
         name: "demo".to_string(),
-        key: 4,
-        value: TSCacheValue::String("demo".to_string()),
+        key: time,
+        value: TSCacheValue::Long(2),
     };
     let rt = serde_json::to_string(&value).unwrap();
     println!("{}", rt);

@@ -1,11 +1,13 @@
+use std::cmp::PartialEq;
 use std::fmt::Formatter;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{Error};
+use crate::entity::TSCacheValue::Float;
 
 trait TSMethod<T> {
     fn convert(self, bytes: &[u8]) -> T;
 }
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone,PartialEq)]
 pub enum DataType {
     Float,
     Long,
@@ -14,6 +16,7 @@ pub enum DataType {
     String,
     ByteArray,
 }
+
 
 impl DataType {
     pub fn length(&self) -> u16 {
@@ -26,10 +29,20 @@ impl DataType {
             DataType::ByteArray => 0,
         }
     }
+    pub fn equal(&self, value: &TSCacheValue) -> bool {
+        match value {
+            Float(_) => if let DataType::Float = self { true }else { false },
+            TSCacheValue::Long(_) => if let DataType::Long = self { true }else { false },
+            TSCacheValue::Double(_) => if let DataType::Double = self { true }else { false },
+            TSCacheValue::Number(_) => if let DataType::Number = self { true }else { false },
+            TSCacheValue::String(_) => if let DataType::String = self { true }else { false },
+            TSCacheValue::ByteArray(_) => if let DataType::ByteArray = self { true }else { false },
+        }
+    }
 }
 
 
-#[derive(Clone, Debug,Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum SaveTimePeriod {
     Nerve,
     Minute,
@@ -58,14 +71,15 @@ pub struct TSItem {
     pub saveTime: SaveTimePeriod,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct TSValue {
     pub name: String,
     pub key: u128,
     pub value: TSCacheValue,
 }
 
-#[derive(Debug, Clone)]
+
+#[derive(Debug, Clone,PartialEq)]
 pub enum TSCacheValue {
     Float(f32),
     Long(i64),
@@ -75,6 +89,12 @@ pub enum TSCacheValue {
     ByteArray(Vec<u8>),
 }
 
+
+impl Default for TSCacheValue {
+    fn default() -> Self {
+        Float(0.0)
+    }
+}
 struct TSCacheValueVisitor;
 impl<'de> serde::de::Visitor<'de> for TSCacheValueVisitor {
     type Value = TSCacheValue;

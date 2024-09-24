@@ -1,16 +1,15 @@
 
 use std::fs::{create_dir, create_dir_all, File, OpenOptions};
-use std::io::{BufWriter, Write};
+use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 use std::time::SystemTime;
 use byteorder::{BigEndian, WriteBytesExt};
 use chrono::Local;
-use rmp_serde::to_vec_named;
-
-
-use crate::entity::{TSItem,TSValue,TSCacheValue,SaveTimePeriod};
+use rmp_serde::{to_vec_named,from_slice};
+use crate::entity::{TSItem, TSValue, TSCacheValue, SaveTimePeriod};
 
 static DATA: &str = "./data";
+
 
 pub struct FileIOCache {
     ts_item: Box<TSItem>,
@@ -67,7 +66,8 @@ impl FileIOCache {
         }
         let period = self.ts_item.saveTime.as_period() * 1000;
         let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
-        if (time - self.current_time) / period == 1 {
+        if (time - self.current_time) / period > 1 {
+            self.close();
             self.write = None;
         }
     }
@@ -83,7 +83,7 @@ impl FileIOCache {
 }
 
 
-fn write_all_items(items: &[TSItem]) {
+pub fn write_all_items(items: &Vec<&TSItem>) {
     let path = format!("{}/time-cache.tc", DATA);
     let mut file = OpenOptions::new()
         .create(true)
@@ -93,5 +93,14 @@ fn write_all_items(items: &[TSItem]) {
     file.write_all(to_vec_named(&items).unwrap().as_slice()).unwrap();
 }
 
+
+pub fn read_all_items(items: &mut Vec<TSItem>) {
+    let path = format!("{}/time-cache.tc", DATA);
+    let mut file = OpenOptions::new().read(true).open(path).unwrap();
+    let mut buff = vec![];
+    file.read_to_end(&mut buff).unwrap();
+    let mut result = from_slice(&buff).unwrap();
+    items.append(&mut result);
+}
 
 

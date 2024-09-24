@@ -8,10 +8,11 @@ use bytes::BytesMut;
 use rmp_serde::to_vec_named;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
-use crate::method::{Exception,TSQueue,choose_method};
+use crate::db::CacheDb;
+use crate::method::{Exception, TSQueue, choose_method};
 use crate::entity::{TSItem,TSValue,TSCacheValue,SaveTimePeriod,DataType};
 
-type Db = Arc<Mutex<HashMap<String, TSQueue>>>;
+type Db = Arc<Mutex<CacheDb>>;
 // type Db = HashMap<u128, Bytes>;
 
 struct TsConnection {

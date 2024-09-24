@@ -2,7 +2,6 @@ use bytes::{BufMut, BytesMut};
 use lazy_static::lazy_static;
 use msgpack_simple::MsgPack;
 use std::collections::HashMap;
-use std::ops::Deref;
 use tokio::sync::MutexGuard;
 
 use crate::entity::{TSCacheValue, TSItem, TSValue};
@@ -10,6 +9,7 @@ use crate::io::FileIOCache;
 use rmp_serde::{from_slice, to_vec_named};
 use serde::{Deserialize, Serialize};
 use ExceptionKind::{TSNameExistsError, TimeSerieError};
+use crate::db::CacheDb;
 
 pub struct TSQueue {
     ts_item: Box<TSItem>,
@@ -101,6 +101,7 @@ pub enum ExceptionKind {
     TSNameExistsError,
     QueueIsNullError,
     TimeSerieError,
+    SaveTypeError,
 }
 
 impl ExceptionKind {
@@ -110,6 +111,7 @@ impl ExceptionKind {
             TSNameExistsError => 4002,
             ExceptionKind::QueueIsNullError => 4003,
             TimeSerieError => 4004,
+            ExceptionKind::SaveTypeError => 4005,
         }
     }
 }
@@ -171,7 +173,10 @@ lazy_static!(
 );
 
 lazy_static!(
-    static ref FILE_CACHE:HashMap<&'static str, FileIOCache> =HashMap::new();
+    static ref FILE_CACHE:HashMap<String, FileIOCache> = {
+        let mut h = HashMap::new();
+        h
+    };
 );
 
 pub fn choose_method(action: u16) -> Option<&'static Box<dyn Method>> {
@@ -180,12 +185,12 @@ pub fn choose_method(action: u16) -> Option<&'static Box<dyn Method>> {
 }
 
 pub trait Method: Send + Sync {
-    fn do_method(&self, param: &[u8], db: &mut MutexGuard<HashMap<String, TSQueue>>, out: &mut BytesMut) -> Result<(), Exception>;
+    fn do_method(&self, param: &[u8], db: &mut MutexGuard<CacheDb>, out: &mut BytesMut) -> Result<(), Exception>;
 }
 // #[derive(Debug, Copy,Clone)]
 struct CreateItemAction;
 impl Method for CreateItemAction {
-    fn do_method(&self, param: &[u8], db: &mut MutexGuard<HashMap<String, TSQueue>>, out: &mut BytesMut) -> Result<(), Exception> {
+    fn do_method(&self, param: &[u8], db: &mut MutexGuard<CacheDb>, out: &mut BytesMut) -> Result<(), Exception> {
         let item: TSItem = match from_slice(param) {
             Ok(v) => v,
             Err(e) => {
@@ -193,14 +198,10 @@ impl Method for CreateItemAction {
             }
         };
         let name = item.tsName.as_str();
+        let cap = item.capacity;
         if !db.contains_key(name) {
             let new = item.clone();
-            db.insert(name.to_string(), TSQueue::new(Box::new(new), item.capacity));
-            unsafe {
-                // let mut cache = &FILE_CACHE;
-                // cache.insert(name, FileIOCache::new(Box::new(item)));
-                // let v = cache.into_values().collect();
-            }
+            db.create_new_item(item, TSQueue::new(Box::new(new), cap));
         } else {
             return Err(Exception::err(ExceptionKind::TSNameExistsError, format!("duplicate TSName {}", item.tsName).as_str()));
         }
@@ -211,8 +212,8 @@ impl Method for CreateItemAction {
 // Set
 struct SetValueAction;
 impl Method for SetValueAction {
-    fn do_method(&self, param: &[u8], db: &mut MutexGuard<HashMap<String, TSQueue>>, out: &mut BytesMut) -> Result<(), Exception> {
-        let value: TSValue = match from_slice(param) {
+    fn do_method(&self, param: &[u8], db: &mut MutexGuard<CacheDb>, out: &mut BytesMut) -> Result<(), Exception> {
+        let mut value: TSValue = match from_slice(param) {
             Ok(v) => v,
             Err(e) => {
                 return Err(Exception::err(ExceptionKind::ParamParseError, format!("parse msgpack error:{}", e).as_str()));
@@ -221,8 +222,7 @@ impl Method for SetValueAction {
         if !db.contains_key(value.name.as_str()) {
             return Err(Exception::err(ExceptionKind::TSNameExistsError, format!("TSName {} not exist", value.name).as_str()));
         }
-        let queue = db.get_mut(value.name.as_str()).unwrap();
-        queue.insert(value.key, Box::new(value.value))
+        db.insert_new_value(&mut value)
     }
 }
 
@@ -230,7 +230,7 @@ impl Method for SetValueAction {
 //
 struct GetValueAction;
 impl Method for GetValueAction {
-    fn do_method(&self, param: &[u8], db: &mut MutexGuard<HashMap<String, TSQueue>>, out: &mut BytesMut) -> Result<(), Exception> {
+    fn do_method(&self, param: &[u8], db: &mut MutexGuard<CacheDb>, out: &mut BytesMut) -> Result<(), Exception> {
         let ts_name = match MsgPack::parse(param) {
             Ok(v) => match v.as_string() {
                 Ok(v) => v,
