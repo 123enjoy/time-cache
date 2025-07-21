@@ -75,13 +75,14 @@ pub fn data_type_match(value: &str) -> Result<DataType, String> {
         "DOUBLE" => Ok(DataType::Double),
         "NUMBER" => Ok(DataType::Number),
         "STRING" => Ok(DataType::String),
+        "byteARRAY" => Ok(DataType::ByteArray),
         _ => Err(format!("'{}' is not a valid type", value)),
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SaveTimePeriod {
-    Nerve,
+    NONE,
     Minute,
     TenMinutes,
     Hour,
@@ -91,7 +92,7 @@ pub enum SaveTimePeriod {
 impl SaveTimePeriod {
     pub fn as_period(&self) -> u128 {
         match self {
-            SaveTimePeriod::Nerve => 0,
+            SaveTimePeriod::NONE => 0,
             SaveTimePeriod::Minute => 60,
             SaveTimePeriod::TenMinutes => 60 * 10,
             SaveTimePeriod::Hour => 3600,
@@ -102,7 +103,7 @@ impl SaveTimePeriod {
 
 fn save_time_period_match(v: &str) -> Result<SaveTimePeriod, String> {
     match v {
-        "NERVE" => Ok(SaveTimePeriod::Nerve),
+        "NONE" => Ok(SaveTimePeriod::NONE),
         "MINITE" => Ok(SaveTimePeriod::Minute),
         "TENMINUTES" => Ok(SaveTimePeriod::TenMinutes),
         "HOUR" => Ok(SaveTimePeriod::Hour),
@@ -136,7 +137,6 @@ impl<'a> Clone for TSValue {
         }
     }
 }
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum TSCacheValue {
     Float(f32),
@@ -233,7 +233,7 @@ impl Serialize for SaveTimePeriod {
         S: Serializer,
     {
         match self {
-            SaveTimePeriod::Nerve => serializer.serialize_str("NERVE"),
+            SaveTimePeriod::NONE => serializer.serialize_str("NERVE"),
             SaveTimePeriod::Minute => serializer.serialize_str("MINUTE"),
             SaveTimePeriod::TenMinutes => serializer.serialize_str("TEN_MINUTES"),
             SaveTimePeriod::Hour => serializer.serialize_str("HOUR"),

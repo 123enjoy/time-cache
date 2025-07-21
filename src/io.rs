@@ -51,7 +51,7 @@ impl FileIOCache {
     }
 
     pub fn append(&mut self, value: &TSValue) {
-        if self.ts_item.storageEnum == SaveTimePeriod::Nerve {
+        if self.ts_item.storageEnum == SaveTimePeriod::NONE {
             return;
         }
         if self.write.is_none() {

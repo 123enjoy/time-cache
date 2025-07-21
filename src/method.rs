@@ -14,6 +14,7 @@ use rmp_serde::{from_slice, to_vec_named};
 use serde::de::value;
 use serde::{Deserialize, Serialize};
 use ExceptionKind::{TSNameExistsError, TimeSerieError};
+use crate::rscode::TSReturnCode;
 
 pub struct TSQueue {
     ts_item: Box<TSItem>,
@@ -163,6 +164,7 @@ pub struct TSMethod {
 
 pub enum MethodKind {
     Create,
+    EXIST,
     Set,
     Get,
 }
@@ -173,6 +175,7 @@ impl MethodKind {
             MethodKind::Create => 301,
             MethodKind::Set => 501,
             MethodKind::Get => 601,
+            MethodKind::EXIST => 201,
         }
     }
 }
@@ -191,6 +194,7 @@ lazy_static! {
         TSMethod::new(MethodKind::Create, Box::new(CreateItemAction)),
         TSMethod::new(MethodKind::Set, Box::new(SetValueAction)),
         TSMethod::new(MethodKind::Get, Box::new(GetValueAction)),
+        TSMethod::new(MethodKind::EXIST,Box::new(ExistsAction)),
     ];
 }
 
@@ -228,6 +232,7 @@ impl Method for CreateItemAction {
     ) -> Result<(), Exception> {
         let header = &buff[0..4];
         let param = &buff[4..];
+        
         let item: TSItem = match from_slice(param) {
             Ok(v) => v,
             Err(e) => {
@@ -330,8 +335,43 @@ impl Method for GetValueAction {
             value: v.1.clone(),
         };
         out.extend_from_slice(header);
-        out.extend_from_slice(&vec![DataType::Long.code(),v.1.clone().convert().code()]);
+        out.extend_from_slice(&vec![DataType::Long.code(), v.1.clone().convert().code()]);
         out.extend_from_slice(to_vec_named(&ts_value).as_ref().unwrap());
+        Ok(())
+    }
+}
+
+
+struct ExistsAction;
+impl Method for ExistsAction {
+    fn do_method(&self, buff: &BytesMut, db: &mut MutexGuard<CacheDb>, out: &mut BytesMut) -> Result<(), Exception> {
+        let header = &buff[0..4];
+        let param = &buff[4..];
+        let ts_name = match MsgPack::parse(param) {
+            Ok(v) => match v.as_string() {
+                Ok(v) => v,
+                Err(e) => {
+                    return Err(Exception::err(
+                        ExceptionKind::ParamParseError,
+                        format!("parse msgpack error:{}", e).as_str(),
+                    ))
+                }
+            },
+            Err(e) => {
+                return Err(Exception::err(
+                    ExceptionKind::ParamParseError,
+                    format!("parse msgpack error:{}", e).as_str(),
+                ))
+            }
+        };
+
+        let code = if !db.contains_key(ts_name.as_str()) {
+            TSReturnCode::TS0201
+        } else {
+            TSReturnCode::TS0202
+        };
+        out.extend_from_slice(header);
+        out.extend_from_slice(MsgPack::Int(code.code() as i64).encode().as_ref());
         Ok(())
     }
 }
