@@ -34,16 +34,11 @@ async fn main() {
                 match handle::process(&mut socket, &db_).await {
                     Ok(_) => {}
                     Err(e) => {
-                        info!("{:?}", e);
-                        match socket.write_all(to_vec_named(&e).unwrap().as_slice()).await {
-                            Ok(_) => {}
-                            Err(e) => {
-                                info!("{:?}", e);
-                                break;
-                            }
-                        };
                         if e.code == -1 {
+                            // socket 断开
                             break;
+                        }else {
+                            info!("fail {:?}", e);
                         }
                     }
                 };

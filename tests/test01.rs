@@ -21,11 +21,11 @@ mod db;
 
 #[path = "../src/rscode.rs"]
 mod rscode;
+use crate::entity::DataType::Float;
+use crate::entity::TSCacheValue::String;
 use crate::entity::{SaveTimePeriod, TSCacheValue, TSValue};
 use crate::io::read_all_items;
 use entity::{DataType, TSItem};
-use crate::entity::DataType::Float;
-use crate::entity::TSCacheValue::String;
 
 #[test]
 fn test01() {
@@ -62,7 +62,7 @@ fn test04() {
     let mut buff = Vec::new();
     ret.read_to_end(&mut buff).unwrap();
     // let result = MsgPack::parse(&*buff).unwrap().as_map().unwrap();
-    let result : Vec<TSItem> = from_slice(&buff).unwrap();
+    let result: Vec<TSItem> = from_slice(&buff).unwrap();
     println!("{:#?}", result);
 }
 
@@ -128,8 +128,16 @@ fn test08() {
     demo(Box::new(item))
 }
 
-
-
+#[test]
+fn test09() {
+    let ts_values = vec![vec![TSValue {
+        name: "dfff".to_string(),
+        key: 1,
+        value: TSCacheValue::INT(1),
+    }]];
+    let bs = to_vec_named(&ts_values).unwrap();
+    println!("{:p}", &ts_values);
+}
 
 fn demo(item: Box<TSItem>) {
     println!("{:p}", &*item);

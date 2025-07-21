@@ -50,13 +50,13 @@ impl TSQueue {
         if self.len > 0 && self.index == 0 && self.keys[self.capacity - 1] >= time {
             return Err(Exception::err(
                 TimeSerieError,
-                format!("current key:{} must be greater than last time", time).as_str(),
+                &format!("ts_name:{}, current key:{} must be greater than last time",self.ts_item.tsName ,time),
             ));
         }
         if self.len > 0 && self.index != 0 && self.keys[self.index - 1] >= time {
             return Err(Exception::err(
                 TSNameExistsError,
-                format!("current key:{} must be greater than last time", time).as_str(),
+                &format!("ts_name:{}, current key:{} must be greater than last time",self.ts_item.tsName ,time),
             ));
         }
         self.keys[self.index] = time;
@@ -87,8 +87,8 @@ impl TSQueue {
                 if self.keys[j] < end_time && self.keys[j] > start_time {
                     buff.push(TSValue{
                         name:self.ts_item.tsName.clone(),
-                        key:self.keys[i],
-                        value: self.values[i].as_ref().unwrap().clone()
+                        key:self.keys[j],
+                        value: self.values[j].as_ref().unwrap().clone()
                     })
                 }
             }
@@ -543,6 +543,24 @@ impl Method for GetRangeAction {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct TSValueArray{
+    name: String,
+    key :Vec<u64>,
+    value: Vec<TSCacheValue>,
+}
+
+impl TSValueArray{
+    fn new(n:&str) -> TSValueArray{
+        TSValueArray{
+            name:n.to_string(),
+            key: vec![],
+            value: vec![],
+        }
+    }
+}
+
+
 struct GetRangeMutiAction;
 impl Method for GetRangeMutiAction {
     fn do_method(&self, buff: &BytesMut, db: &mut MutexGuard<CacheDb>, out: &mut BytesMut) -> Result<(), Exception> {
@@ -555,12 +573,19 @@ impl Method for GetRangeMutiAction {
             if db.contains_key(&ts_range.name) {
                 let query = db.get_mut(&ts_range.name).unwrap();
                 code = query.get_value_type_code();
-                result.push(query.query_times(ts_range.begin,ts_range.end));
+                let results = query.query_times(ts_range.begin,ts_range.end);
+                let mut ts_value_array = Box::new(TSValueArray::new(&query.ts_item.tsName));
+                for result in results {
+                    ts_value_array.key.push(result.key);
+                    ts_value_array.value.push(result.value);
+                }
+                result.push(ts_value_array);
             }
         }
         out.extend_from_slice(header);
         out.extend_from_slice(&[DataType::Long.code(),code]);
-        out.extend_from_slice(&to_vec_named(&result).unwrap());
+        let content = to_vec_named(&result).unwrap();
+        out.extend_from_slice(&content);
         Ok(())
     }
 }
