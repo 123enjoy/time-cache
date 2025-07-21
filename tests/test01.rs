@@ -58,11 +58,11 @@ fn test03() {
 
 #[test]
 fn test04() {
-    let mut ret = File::open("./demo-1.bs").unwrap();
+    let mut ret = File::open("./data/time-cache.tc").unwrap();
     let mut buff = Vec::new();
     ret.read_to_end(&mut buff).unwrap();
     // let result = MsgPack::parse(&*buff).unwrap().as_map().unwrap();
-    let result : TSItem = from_slice(&buff).unwrap();
+    let result : Vec<TSItem> = from_slice(&buff).unwrap();
     println!("{:#?}", result);
 }
 
@@ -128,79 +128,7 @@ fn test08() {
     demo(Box::new(item))
 }
 
-#[test]
-fn test09() {
-    let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as u64;
-    let value = TSValue {
-        name: "demo".to_string(),
-        key: time,
-        value: TSCacheValue::Long(2),
-    };
-    let encode_code = to_vec_named(&value).unwrap();
-    println!("{:#?}", encode_code);
-}
 
-#[test]
-fn test10(){
-    let cache = Arc::new(Box::new(vec![0x01,0x02]));
-    let new_cache = cache.clone();
-    println!("new_cache {:p}", new_cache);
-    println!("cache {:p}", cache);
-}
-
-#[test]
-fn test11(){
-    let cache = &vec![0x01,0x02];
-    let new_cache = &cache.to_vec()[..];
-    println!("new_cache {:p}", new_cache.as_ptr());
-    println!("cache {:p}", cache);
-}
-
-#[test]
-fn test12(){
-    let s = [1,2,3];
-    let cache:Box<[i32]> = Box::new([0x01,0x02]);
-    {
-        println!("cache {:p}", &cache.as_ptr());
-    }
-    let new_cache = cache.into_vec();
-    println!("new_cache {:p}", new_cache.as_ptr());
-}
-
-#[test]
-fn test13(){
-    let value = TSValue{
-        name : "ssd".to_string(),
-        key:1,
-        value:TSCacheValue::ByteArray(Arc::new(Box::new(vec![1,2,3]))),
-    };
-    {
-        match &value.value {
-            TSCacheValue::ByteArray(it) => {
-                println!("{:p}", it);
-            },
-            _ => {},
-        }
-        println!("value {:p}", &value.value);
-    }
-    let value_clone = value.clone();
-    match &value_clone.value {
-        TSCacheValue::ByteArray(it) => {
-            println!("{:p}", it);
-        },
-        _ => {},
-    }
-    println!("value {:p}", &value.value);
-}
-
-#[test]
-fn test14(){
-    let mut result = true;
-    {
-        result = false;
-    }
-    println!("result {:#?}", result);
-}
 
 
 fn demo(item: Box<TSItem>) {

@@ -44,15 +44,29 @@ impl DataType {
         }
     }
     pub fn equal(&self, value: &TSCacheValue) -> bool {
-        match value {
-            Float(_) => DataType::Float == *self,
-            TSCacheValue::Long(_) => DataType::Long == *self,
-            TSCacheValue::Double(_) => DataType::Number == *self,
-            TSCacheValue::Number(_) => DataType::Number == *self,
-            TSCacheValue::String(_) => DataType::String == *self,
-            TSCacheValue::ByteArray(_) => DataType::ByteArray == *self,
-            TSCacheValue::INT(_) => DataType::INT == *self,
+        match self {
+            DataType::Number => {
+                match value {
+                    TSCacheValue::INT(_) => true,
+                    TSCacheValue::Long(_) => true,
+                    TSCacheValue::Double(_) => true,
+                    TSCacheValue::Float(_) => true,
+                    _ => false
+                }
+            }
+            _ => value.clone().convert() == *self
         }
+        // match value {
+        //     Float(_) => DataType::Float == *self,
+        //     TSCacheValue::Long(_) => DataType::Long == *self,
+        //     TSCacheValue::Double(_) => DataType::Number == *self,
+        //     TSCacheValue::Number(_) => {
+        //
+        //     },
+        //     TSCacheValue::String(_) => DataType::String == *self,
+        //     TSCacheValue::ByteArray(_) => DataType::ByteArray == *self,
+        //     TSCacheValue::INT(_) => DataType::INT == *self,
+        // }
     }
 
     pub fn code(&self) -> u8 {
@@ -234,7 +248,7 @@ impl Serialize for SaveTimePeriod {
         S: Serializer,
     {
         match self {
-            SaveTimePeriod::NONE => serializer.serialize_str("NERVE"),
+            SaveTimePeriod::NONE => serializer.serialize_str("NONE"),
             SaveTimePeriod::Minute => serializer.serialize_str("MINUTE"),
             SaveTimePeriod::TenMinutes => serializer.serialize_str("TEN_MINUTES"),
             SaveTimePeriod::Hour => serializer.serialize_str("HOUR"),

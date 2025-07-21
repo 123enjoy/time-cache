@@ -115,6 +115,10 @@ impl TSQueue {
             ))
         }
     }
+
+    pub fn get_value_type_code(&self) -> u8 {
+        self.ts_item.valueType.code()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -165,6 +169,7 @@ pub struct TSMethod {
 
 pub enum MethodKind {
     Create,
+    CreateMuti,
     EXIST,
     Set,
     SetMuti,
@@ -177,6 +182,7 @@ impl MethodKind {
     pub fn as_code(&self) -> u16 {
         match self {
             MethodKind::Create => 301,
+            MethodKind::CreateMuti => 303,
             MethodKind::Set => 501,
             MethodKind::SetMuti => 505,
 
@@ -205,6 +211,7 @@ lazy_static! {
         TSMethod::new(MethodKind::EXIST, Box::new(ExistsAction)),
         TSMethod::new(MethodKind::GetMuti, Box::new(GetMutiAction)),
         TSMethod::new(MethodKind::SetMuti, Box::new(SetMutiAction)),
+         TSMethod::new(MethodKind::CreateMuti, Box::new(CreateMutiAction)),
     ];
 }
 
@@ -398,7 +405,7 @@ impl Method for GetMutiAction {
         db: &mut MutexGuard<CacheDb>,
         out: &mut BytesMut,
     ) -> Result<(), Exception> {
-        let header = &buff[0..4];
+        let header = &buff[0..2];
         let param = &buff[4..];
         let ts_names: Vec<String> = match from_slice(param) {
             Ok(v) => v,
@@ -411,15 +418,19 @@ impl Method for GetMutiAction {
         };
 
         let mut ts_values = Vec::<TSValue>::new();
+        let mut code:u8 = 0;
         for ts_name in ts_names {
             match db.get_mut(&ts_name) {
                 Some(queue) => {
                     match queue.query_last() {
-                        Some(v) => ts_values.push(TSValue {
-                            name: ts_name,
-                            key: v.0,
-                            value: v.1.clone(),
-                        }),
+                        Some(v) => {
+                            ts_values.push(TSValue {
+                                name: ts_name,
+                                key: v.0,
+                                value: v.1.clone(),
+                            });
+                            code = queue.get_value_type_code();
+                        },
                         None => {}
                     }
 
@@ -431,16 +442,8 @@ impl Method for GetMutiAction {
             };
         }
         out.extend_from_slice(header);
-        {
-            if !&ts_values.is_empty() {
-                out.extend_from_slice(&[
-                    DataType::Long.code(),
-                    ts_values[0].value.clone().convert().code(),
-                ]);
-            }
-        }
-
-        out.extend_from_slice(&to_vec(&ts_values).unwrap());
+        out.extend_from_slice(&[DataType::Long.code(), code]);
+        out.extend_from_slice(&to_vec_named(&ts_values).unwrap());
 
         Ok(())
     }
@@ -479,3 +482,23 @@ impl Method for SetMutiAction {
         Ok(())
     }
 }
+
+struct CreateMutiAction;
+impl Method for CreateMutiAction {
+    fn do_method(&self, buff: &BytesMut, db: &mut MutexGuard<CacheDb>, out: &mut BytesMut) -> Result<(), Exception> {
+        let header = &buff[0..4];
+        let param = &buff[4..];
+        let ts_items: Vec<TSItem> = from_slice(param).unwrap();
+        for ts_item in ts_items {
+            if !db.contains_key(&ts_item.tsName) {
+                let cap = ts_item.capacity as usize;
+                db.create_new_item(ts_item.clone(),TSQueue::new(Box::new(ts_item),cap))
+            }
+        }
+        out.extend_from_slice(header);
+        let code = TS0203.code() as i64;
+        out.extend_from_slice(&MsgPack::Int(code).encode());
+        Ok(())
+    }
+}
+
