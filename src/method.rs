@@ -66,14 +66,16 @@ impl TSQueue {
         Ok(())
     }
 
-    pub unsafe fn query_times(&mut self, start_time: u64, end_time: u64) -> Vec<&TSCacheValue> {
+    pub fn query_times(&mut self, start_time: u64, end_time: u64) -> Vec<TSValue> {
         let mut buff = vec![];
         if self.len < self.capacity {
-            unsafe {
-                for i in 0..self.index {
-                    if self.keys[i] < end_time && self.keys[i] > start_time {
-                        buff.push(&*self.values[i].as_ref().unwrap())
-                    }
+            for i in 0..self.index {
+                if self.keys[i] < end_time && self.keys[i] > start_time {
+                    buff.push(TSValue{
+                        name:self.ts_item.tsName.clone(),
+                        key:self.keys[i],
+                        value: self.values[i].as_ref().unwrap().clone()
+                    })
                 }
             }
         } else {
@@ -83,7 +85,11 @@ impl TSQueue {
                     j = i % self.capacity;
                 }
                 if self.keys[j] < end_time && self.keys[j] > start_time {
-                    buff.push(&*self.values[i].as_ref().unwrap())
+                    buff.push(TSValue{
+                        name:self.ts_item.tsName.clone(),
+                        key:self.keys[i],
+                        value: self.values[i].as_ref().unwrap().clone()
+                    })
                 }
             }
         }
@@ -176,18 +182,24 @@ pub enum MethodKind {
 
     Get,
     GetMuti,
+
+    GetRange,
+    GetRangeMuti,
 }
 
 impl MethodKind {
     pub fn as_code(&self) -> u16 {
         match self {
-            MethodKind::Create => 301,
-            MethodKind::CreateMuti => 303,
-            MethodKind::Set => 501,
-            MethodKind::SetMuti => 505,
+            MethodKind::Create => 301,     // 构建时间序列
+            MethodKind::CreateMuti => 303, // 构建多个时间序列
+            MethodKind::Set => 501,        // 设置一个最新值
+            MethodKind::SetMuti => 505,    // 设置多个值
 
             MethodKind::Get => 601,
             MethodKind::GetMuti => 610,
+
+            MethodKind::GetRange => 608,
+            MethodKind::GetRangeMuti => 611,
 
             MethodKind::EXIST => 201,
         }
@@ -211,7 +223,9 @@ lazy_static! {
         TSMethod::new(MethodKind::EXIST, Box::new(ExistsAction)),
         TSMethod::new(MethodKind::GetMuti, Box::new(GetMutiAction)),
         TSMethod::new(MethodKind::SetMuti, Box::new(SetMutiAction)),
-         TSMethod::new(MethodKind::CreateMuti, Box::new(CreateMutiAction)),
+        TSMethod::new(MethodKind::CreateMuti, Box::new(CreateMutiAction)),
+        TSMethod::new(MethodKind::GetRange, Box::new(GetRangeAction)),
+         TSMethod::new(MethodKind::GetRangeMuti, Box::new(GetRangeMutiAction)),
     ];
 }
 
@@ -418,7 +432,7 @@ impl Method for GetMutiAction {
         };
 
         let mut ts_values = Vec::<TSValue>::new();
-        let mut code:u8 = 0;
+        let mut code: u8 = 0;
         for ts_name in ts_names {
             match db.get_mut(&ts_name) {
                 Some(queue) => {
@@ -430,7 +444,7 @@ impl Method for GetMutiAction {
                                 value: v.1.clone(),
                             });
                             code = queue.get_value_type_code();
-                        },
+                        }
                         None => {}
                     }
 
@@ -485,19 +499,68 @@ impl Method for SetMutiAction {
 
 struct CreateMutiAction;
 impl Method for CreateMutiAction {
-    fn do_method(&self, buff: &BytesMut, db: &mut MutexGuard<CacheDb>, out: &mut BytesMut) -> Result<(), Exception> {
+    fn do_method(
+        &self,
+        buff: &BytesMut,
+        db: &mut MutexGuard<CacheDb>,
+        out: &mut BytesMut,
+    ) -> Result<(), Exception> {
         let header = &buff[0..4];
         let param = &buff[4..];
         let ts_items: Vec<TSItem> = from_slice(param).unwrap();
         for ts_item in ts_items {
             if !db.contains_key(&ts_item.tsName) {
                 let cap = ts_item.capacity as usize;
-                db.create_new_item(ts_item.clone(),TSQueue::new(Box::new(ts_item),cap))
+                db.create_new_item(ts_item.clone(), TSQueue::new(Box::new(ts_item), cap))
             }
         }
         out.extend_from_slice(header);
         let code = TS0203.code() as i64;
         out.extend_from_slice(&MsgPack::Int(code).encode());
+        Ok(())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct TSKeyRange{
+    name: String,
+    begin: u64,
+    end: u64,
+}
+
+struct GetRangeAction;
+impl Method for GetRangeAction {
+    fn do_method(&self, buff: &BytesMut, db: &mut MutexGuard<CacheDb>, out: &mut BytesMut) -> Result<(), Exception> {
+        let header = &buff[0..2];
+        let param = &buff[4..];
+        let ts_range : TSKeyRange = from_slice(param).unwrap();
+        let query = db.get_mut(&ts_range.name).unwrap();
+        let result = query.query_times(ts_range.begin,ts_range.end);
+        out.extend_from_slice(header);
+        out.extend_from_slice(&[DataType::Long.code(),query.get_value_type_code()]);
+        out.extend_from_slice(&to_vec_named(&result).unwrap());
+        Ok(())
+    }
+}
+
+struct GetRangeMutiAction;
+impl Method for GetRangeMutiAction {
+    fn do_method(&self, buff: &BytesMut, db: &mut MutexGuard<CacheDb>, out: &mut BytesMut) -> Result<(), Exception> {
+        let header = &buff[0..2];
+        let param = &buff[4..];
+        let mut code:u8 = 0;
+        let ts_ranges: Vec<TSKeyRange> = from_slice(param).unwrap();
+        let mut result = vec![];
+        for ts_range in ts_ranges {
+            if db.contains_key(&ts_range.name) {
+                let query = db.get_mut(&ts_range.name).unwrap();
+                code = query.get_value_type_code();
+                result.push(query.query_times(ts_range.begin,ts_range.end));
+            }
+        }
+        out.extend_from_slice(header);
+        out.extend_from_slice(&[DataType::Long.code(),code]);
+        out.extend_from_slice(&to_vec_named(&result).unwrap());
         Ok(())
     }
 }
