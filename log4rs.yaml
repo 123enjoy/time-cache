@@ -1,0 +1,21 @@
+# log4rs.yml
+refresh_rate: 30 seconds
+
+appenders:
+  console:
+    kind: console
+    target: stdout
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S)} [{t}] {l} - {m}{n}"
+
+  file:
+    kind: file
+    path: "log/output.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S)} [{t}] {l} - {m}{n}"
+
+root:
+  level: info
+  appenders:
+    - console
+    - file

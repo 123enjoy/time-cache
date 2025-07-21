@@ -1,0 +1,8 @@
+/target
+.idea
+
+*.out
+*.txt
+
+data
+log
