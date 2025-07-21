@@ -7,7 +7,7 @@ use std::mem::take;
 use tokio::sync::MutexGuard;
 
 use crate::db::CacheDb;
-use crate::entity::{TSCacheValue, TSItem, TSValue};
+use crate::entity::{DataType, TSCacheValue, TSItem, TSValue};
 use crate::io::FileIOCache;
 use crate::rscode::TSReturnCode::{TS0203, TS0301};
 use rmp_serde::{from_slice, to_vec_named};
@@ -196,7 +196,7 @@ lazy_static! {
 
 lazy_static! {
     static ref FILE_CACHE: HashMap<String, FileIOCache> = {
-        let mut h = HashMap::new();
+        let h = HashMap::new();
         h
     };
 }
@@ -330,7 +330,7 @@ impl Method for GetValueAction {
             value: v.1.clone(),
         };
         out.extend_from_slice(header);
-
+        out.extend_from_slice(&vec![DataType::Long.code(),v.1.clone().convert().code()]);
         out.extend_from_slice(to_vec_named(&ts_value).as_ref().unwrap());
         Ok(())
     }
