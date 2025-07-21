@@ -138,7 +138,7 @@ impl<'a> Clone for TSValue {
     }
 }
 #[derive(Debug, Clone, PartialEq)]
-pub enum TSCacheValue {
+pub enum  TSCacheValue {
     Float(f32),
     INT(i32),
     Long(i64),
@@ -305,7 +305,7 @@ impl Serialize for TSCacheValue {
             TSCacheValue::Number(it) => serializer.serialize_f64(*it),
             TSCacheValue::String(it) => serializer.serialize_str(it),
             TSCacheValue::ByteArray(it) => serializer.serialize_bytes(it.as_ref()),
-            &TSCacheValue::INT(it) => serializer.serialize_i32(it),
+            TSCacheValue::INT(it) => serializer.serialize_i32(*it),
         }
     }
 }

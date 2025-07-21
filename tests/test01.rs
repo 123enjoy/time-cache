@@ -25,6 +25,7 @@ use crate::entity::{SaveTimePeriod, TSCacheValue, TSValue};
 use crate::io::read_all_items;
 use entity::{DataType, TSItem};
 use crate::entity::DataType::Float;
+use crate::entity::TSCacheValue::String;
 
 #[test]
 fn test01() {
@@ -166,6 +167,40 @@ fn test12(){
     println!("new_cache {:p}", new_cache.as_ptr());
 }
 
+#[test]
+fn test13(){
+    let value = TSValue{
+        name : "ssd".to_string(),
+        key:1,
+        value:TSCacheValue::ByteArray(Arc::new(Box::new(vec![1,2,3]))),
+    };
+    {
+        match &value.value {
+            TSCacheValue::ByteArray(it) => {
+                println!("{:p}", it);
+            },
+            _ => {},
+        }
+        println!("value {:p}", &value.value);
+    }
+    let value_clone = value.clone();
+    match &value_clone.value {
+        TSCacheValue::ByteArray(it) => {
+            println!("{:p}", it);
+        },
+        _ => {},
+    }
+    println!("value {:p}", &value.value);
+}
+
+#[test]
+fn test14(){
+    let mut result = true;
+    {
+        result = false;
+    }
+    println!("result {:#?}", result);
+}
 
 
 fn demo(item: Box<TSItem>) {
