@@ -73,6 +73,7 @@ pub fn data_type_match(value: &str) -> Result<DataType, String> {
         "FLOAT" => Ok(DataType::Float),
         "LONG" => Ok(DataType::Long),
         "DOUBLE" => Ok(DataType::Double),
+        "INT" => Ok(DataType::INT),
         "NUMBER" => Ok(DataType::Number),
         "STRING" => Ok(DataType::String),
         "byteARRAY" => Ok(DataType::ByteArray),
@@ -202,7 +203,7 @@ impl Serialize for DataType {
             DataType::Double => serializer.serialize_str("DOUBLE"),
             DataType::Number => serializer.serialize_str("NUMBER"),
             DataType::String => serializer.serialize_str("STRING"),
-            DataType::ByteArray => serializer.serialize_str("BYTEARRAY"),
+            DataType::ByteArray => serializer.serialize_str("byteARRAY"),
         }
     }
 }

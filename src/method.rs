@@ -12,7 +12,7 @@ use crate::entity::{DataType, TSCacheValue, TSItem, TSValue};
 use crate::io::FileIOCache;
 use crate::rscode::TSReturnCode;
 use crate::rscode::TSReturnCode::{TS0203, TS0301};
-use rmp_serde::{from_slice, to_vec_named};
+use rmp_serde::{from_slice, to_vec, to_vec_named};
 use serde::de::value;
 use serde::{Deserialize, Serialize};
 use ExceptionKind::{TSNameExistsError, TimeSerieError};
@@ -326,16 +326,16 @@ impl Method for GetValueAction {
         if !db.contains_key(ts_name.as_str()) {
             return Err(Exception::err(
                 TSNameExistsError,
-                format!("TSName {} not exist", ts_name).as_str(),
+                &format!("TSName {} not exist", &ts_name),
             ));
         }
-        let queue = db.get_mut(ts_name.as_str()).unwrap();
+        let queue = db.get_mut(&ts_name).unwrap();
         let v = match queue.query_last() {
             Some(v) => v,
             None => {
                 return Err(Exception::err(
                     ExceptionKind::QueueIsNullError,
-                    format!("Queue is empty:{}", ts_name).as_str(),
+                    &format!("Queue is empty:{}", &ts_name),
                 ))
             }
         };
@@ -398,7 +398,51 @@ impl Method for GetMutiAction {
         db: &mut MutexGuard<CacheDb>,
         out: &mut BytesMut,
     ) -> Result<(), Exception> {
-        todo!()
+        let header = &buff[0..4];
+        let param = &buff[4..];
+        let ts_names: Vec<String> = match from_slice(param) {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(Exception::err(
+                    ExceptionKind::ParamParseError,
+                    format!("parse msgpack error:{}", e).as_str(),
+                ))
+            }
+        };
+
+        let mut ts_values = Vec::<TSValue>::new();
+        for ts_name in ts_names {
+            match db.get_mut(&ts_name) {
+                Some(queue) => {
+                    match queue.query_last() {
+                        Some(v) => ts_values.push(TSValue {
+                            name: ts_name,
+                            key: v.0,
+                            value: v.1.clone(),
+                        }),
+                        None => {}
+                    }
+
+                    ()
+                }
+                _ => {
+                    warn!("not exist key : {}", &ts_name);
+                }
+            };
+        }
+        out.extend_from_slice(header);
+        {
+            if !&ts_values.is_empty() {
+                out.extend_from_slice(&[
+                    DataType::Long.code(),
+                    ts_values[0].value.clone().convert().code(),
+                ]);
+            }
+        }
+
+        out.extend_from_slice(&to_vec(&ts_values).unwrap());
+
+        Ok(())
     }
 }
 
